@@ -14,13 +14,13 @@ uv run python -m pytest -k "persistence"        # single test
 
 | File | Target | Notes |
 |------|--------|-------|
-| `test_config.py` | `src/kiki_tuning/config.py` | Defaults + override semantics. If you change a default, update the assertion. |
-| `test_registry.py` | `src/kiki_tuning/registry.py` | Register / get / list / persistence round-trip via `tempfile`. |
+| `test_config.py` | `src/ailiance_tuning/config.py` | Defaults + override semantics. If you change a default, update the assertion. |
+| `test_registry.py` | `src/ailiance_tuning/registry.py` | Register / get / list / persistence round-trip via `tempfile`. |
 | `test_validate_dataset.py` | `scripts/validate_dataset.py` | Role + content schema on synthetic JSONL. |
 
 ## Conventions
 
-- **Import style** : `from src.kiki_tuning.config import ...` and `from scripts.validate_dataset import ...`. Both work because pytest adds repo root to `sys.path` (no `pip install -e .` needed).
+- **Import style** : `from src.ailiance_tuning.config import ...` and `from scripts.validate_dataset import ...`. Both work because pytest adds repo root to `sys.path` (no `pip install -e .` needed).
 - **`tempfile.NamedTemporaryFile(delete=False)`** for registry tests — the registry reopens the file, so it cannot be held open by the context manager. Leaks files in `/tmp`; acceptable for a tiny suite.
 - **No fixtures directory** yet. If one test file grows to need fixtures, add `conftest.py` next to it, not at root (keeps scope tight).
 - **No mocks for HF / torch**. Tests should not touch those layers — if you're tempted to mock `AutoModelForCausalLM`, you're testing the wrong thing; rewrite the target to isolate pure logic first.

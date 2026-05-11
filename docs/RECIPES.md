@@ -17,7 +17,7 @@ max_seq_length: 2048
 hub_model_id:   clemsail/kiki-<domain>-sft
 ```
 
-Shape mirrors `TrainingConfig` in `src/kiki_tuning/config.py`. Required fields are hard-fail on missing: `base_model`, `dataset`, `output_dir`. All others have sensible defaults.
+Shape mirrors `TrainingConfig` in `src/ailiance_tuning/config.py`. Required fields are hard-fail on missing: `base_model`, `dataset`, `output_dir`. All others have sensible defaults.
 
 ## Field guide
 

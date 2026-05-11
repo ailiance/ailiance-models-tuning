@@ -138,7 +138,7 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
 
 void ble_init(void) {
     nimble_port_init();
-    ble_svc_gap_device_name_set("FineFab-Device");
+    ble_svc_gap_device_name_set("Ailiance-Device");
     ble_svc_gap_init();
     ble_svc_gatt_init();
     ble_gatts_count_cfg(gatt_svr_svcs);

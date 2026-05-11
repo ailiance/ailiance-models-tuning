@@ -1,8 +1,8 @@
-# KIKI-models-tuning
+# ailiance-models-tuning
 
-Fine-tuning pipeline for the FineFab domain-expert LLM family — 10 hardware/embedded domains on Qwen 2.5-32B.
+Fine-tuning pipeline for the Ailiance domain-expert LLM family — 10 hardware/embedded domains on Qwen 2.5-32B.
 
-Part of the [**FineFab**](https://github.com/L-electron-Rare) platform. Upstream sibling: [**KIKI-Mac_tunner**](https://github.com/L-electron-Rare/KIKI-Mac_tunner) (MLX toolkit for Apple Silicon). Downstream consumer: [**micro-kiki**](https://github.com/electron-rare/micro-kiki) (MoE-LoRA routing runtime).
+Part of the [**Ailiance**](https://github.com/ailiance) platform. Upstream sibling: [**ailiance-mac-tuner**](https://github.com/ailiance/ailiance-mac-tuner) (MLX toolkit for Apple Silicon). Downstream consumer: [**micro-kiki**](https://github.com/electron-rare/micro-kiki) (MoE-LoRA routing runtime).
 
 ---
 
@@ -46,7 +46,7 @@ datasets/builders/build_<domain>_dataset.py       seed + HF merge → JSONL
   → outputs/sft-<domain>/adapter_model.safetensors
   → scripts/eval_adapters.py                      token-overlap, 5 samples/domain
   → scripts/publish_adapters.py                   HF Hub + model card
-  → src/kiki_tuning/registry.py                   JSON registry
+  → src/ailiance_tuning/registry.py                   JSON registry
 ```
 
 ## Quick start
@@ -83,7 +83,7 @@ python scripts/publish_adapters.py --org clemsail
 ## Project structure
 
 ```
-src/kiki_tuning/       Thin lib — config dataclasses, registry, validator
+src/ailiance_tuning/       Thin lib — config dataclasses, registry, validator
 scripts/               Real entry points (train / eval / publish / build)
 datasets/builders/     One builder per domain (seed + HF merge)
 datasets/processed/    Built JSONL outputs (gitignored)
@@ -99,10 +99,7 @@ tests/                 Config validation, dataset schema checks
 |---|---|
 | [**mascarade**](https://github.com/electron-rare/mascarade) | LLM orchestration — loads adapters at inference time |
 | [**micro-kiki**](https://github.com/electron-rare/micro-kiki) | Downstream runtime — 35-domain routing + cognitive layer |
-| [**KIKI-Mac_tunner**](https://github.com/L-electron-Rare/KIKI-Mac_tunner) | Sibling — MLX fine-tuning for Mac Studio (distillation target = teacher) |
-| [**makelife-hard**](https://github.com/L-electron-Rare/makelife-hard) | KiCad design sources (dataset source for `kicad` domain) |
-| [**makelife-firmware**](https://github.com/L-electron-Rare/makelife-firmware) | ESP32/STM32 firmware (dataset source for `embedded`, `stm32`, `iot`) |
-| [**finefab-life**](https://github.com/L-electron-Rare/finefab-life) | Integration runtime — deploys the registered models |
+| [**ailiance-mac-tuner**](https://github.com/ailiance/ailiance-mac-tuner) | Sibling — MLX fine-tuning for Mac Studio (distillation target = teacher) |
 
 ## Gotchas
 

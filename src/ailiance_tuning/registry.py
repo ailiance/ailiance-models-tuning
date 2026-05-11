@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("kiki_tuning.registry")
+logger = logging.getLogger("ailiance_tuning.registry")
 
 REGISTRY_FILE = Path("artifacts/model_registry.json")
 
