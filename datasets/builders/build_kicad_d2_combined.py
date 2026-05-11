@@ -107,10 +107,17 @@ class TripletRow:
 # ─── Step 1: load source corpus (kicad9plus) ──────────────────────────
 
 def load_source_corpus(bucket: str, max_projects: int | None = None) -> list[dict]:
-    """Load .kicad_sch + .kicad_pcb pairs from Ailiance-fr/kicad9plus-<bucket>.
+    """Load .kicad_sch records from Ailiance-fr/kicad9plus-<bucket>/dataset.jsonl.
 
-    Returns list of dicts {project, sch_path, pcb_path, license_spdx}.
-    Bucket = 'permissive' or 'copyleft'.
+    The dataset is already in chat format: each row is
+        {"messages": [{role:user, ...}, {role:assistant, content:<sch>}],
+         "metadata": {source_url, license_spdx, commit_sha, kicad_version,
+                      repo, rel_path, file_size_bytes, file_sha256, ...}}
+
+    Returns list of dicts {project, sch_content (str), prompt (str),
+    license_spdx, source_url, file_sha256, repo, rel_path, source_repo,
+    source_path}. No PCB pair — kicad-cli DRC will be skipped, only ERC
+    is meaningful on the sch alone.
     """
     log.info("[1] loading %s corpus (max_projects=%s)", bucket, max_projects)
     try:
@@ -118,72 +125,61 @@ def load_source_corpus(bucket: str, max_projects: int | None = None) -> list[dic
     except ImportError:
         log.error("huggingface_hub not found; pip install huggingface-hub")
         return []
-    
+
     source_repo = SOURCE_PERMISSIVE if bucket == "permissive" else SOURCE_COPYLEFT
     cache_dir = WORK_DIR / bucket
     cache_dir.mkdir(parents=True, exist_ok=True)
-    
+
     try:
-        # Download snapshot (all revisions cached locally after first run)
         local_path = Path(snapshot_download(
             repo_id=source_repo,
             repo_type="dataset",
             local_dir=str(cache_dir),
-            local_dir_use_symlinks=False,
         ))
     except Exception as e:
         log.error("failed to download %s: %s", source_repo, e)
         return []
-    
-    projects = {}
-    count = 0
-    
-    # Walk the tree and group .kicad_sch + .kicad_pcb by project
-    for sch_file in sorted(local_path.rglob("*.kicad_sch")):
-        project_dir = sch_file.parent
-        pcb_file = project_dir / sch_file.stem.replace(".kicad_sch", ".kicad_pcb")
-        
-        # Skip if no paired PCB (DRC requires PCB)
-        if not pcb_file.exists():
-            continue
-        
-        project_name = project_dir.name
-        
-        # Extract license from LICENSE file or parent LICENSE files
-        license_spdx = "NOASSERTION"  # fallback
-        for potential_license in [project_dir / "LICENSE", 
-                                  project_dir.parent / "LICENSE",
-                                  local_path / "LICENSE"]:
-            if potential_license.exists():
-                license_text = potential_license.read_text(errors="ignore").upper()
-                if "GPL" in license_text:
-                    license_spdx = "GPL-3.0-or-later"
-                    break
-                elif "APACHE" in license_text:
-                    license_spdx = "Apache-2.0"
-                    break
-                elif "MIT" in license_text:
-                    license_spdx = "MIT"
-                    break
-                elif "BSD" in license_text:
-                    license_spdx = "BSD-3-Clause"
-                    break
-        
-        projects[project_name] = {
-            "project": project_name,
-            "source_repo": source_repo,
-            "source_path": str(sch_file.relative_to(local_path)),
-            "sch_path": str(sch_file),
-            "pcb_path": str(pcb_file),
-            "license_spdx": license_spdx,
-        }
-        count += 1
-        if max_projects and count >= max_projects:
-            break
-    
-    result = list(projects.values())
-    log.info("  loaded %d projects from %s", len(result), source_repo)
-    return result
+
+    dataset_jsonl = local_path / "dataset.jsonl"
+    if not dataset_jsonl.exists():
+        log.error("dataset.jsonl missing in %s", source_repo)
+        return []
+
+    projects: list[dict] = []
+    with open(dataset_jsonl) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            msgs = row.get("messages") or []
+            md = row.get("metadata") or {}
+            user_prompt = next((m.get("content", "") for m in msgs
+                                if m.get("role") == "user"), "")
+            sch_content = next((m.get("content", "") for m in msgs
+                                if m.get("role") == "assistant"), "")
+            if not sch_content or not sch_content.lstrip().startswith("(kicad_sch"):
+                continue
+            projects.append({
+                "project": md.get("repo", "?") + "/" + md.get("rel_path", "?"),
+                "source_repo": source_repo,
+                "source_path": md.get("rel_path", "?"),
+                "sch_content": sch_content,
+                "prompt": user_prompt,
+                "license_spdx": md.get("license_spdx", "NOASSERTION"),
+                "source_url": md.get("source_url", ""),
+                "file_sha256": md.get("file_sha256", ""),
+                "repo": md.get("repo", ""),
+                "rel_path": md.get("rel_path", ""),
+            })
+            if max_projects and len(projects) >= max_projects:
+                break
+
+    log.info("  loaded %d projects from %s", len(projects), source_repo)
+    return projects
 
 
 # ─── Step 2: kicad-cli ERC/DRC in sandboxed Docker ────────────────────
@@ -231,22 +227,25 @@ def run_erc_drc_for_project(project: dict) -> dict:
     Returns {"erc": {...}, "drc": {...}, "valid": bool} where `valid` means
     both ERC and DRC return 0 errors (only 0/warnings).
     """
-    sch_bytes = Path(project["sch_path"]).read_bytes()
-    pcb_bytes = Path(project["pcb_path"]).read_bytes()
-    inputs = {"board.kicad_sch": sch_bytes, "board.kicad_pcb": pcb_bytes}
+    # Accept either sch_content (string from dataset.jsonl) or sch_path (legacy file path).
+    sch_content = project.get("sch_content")
+    if sch_content is None and project.get("sch_path"):
+        sch_content = Path(project["sch_path"]).read_text()
+    if sch_content is None:
+        return {"erc": {"exit_code": -1, "stdout": "", "stderr": "no sch", "duration_s": 0},
+                "drc": {"exit_code": -1, "stdout": "", "stderr": "no pcb (skipped)", "duration_s": 0},
+                "valid": False}
+    sch_bytes = sch_content.encode("utf-8")
+    inputs = {"board.kicad_sch": sch_bytes}
 
     erc = docker_run_kicad_cli(
-        ["kicad-cli", "sch", "erc", "--format=json",
-         "--output=/tmp/erc.json", "/tmp/in/board.kicad_sch", "&&",
-         "cat", "/tmp/erc.json"],
+        ["sh", "-c",
+         "kicad-cli sch erc --format=json --output=/tmp/erc.json "
+         "/tmp/in/board.kicad_sch && cat /tmp/erc.json"],
         inputs, timeout_s=60,
     )
-    drc = docker_run_kicad_cli(
-        ["kicad-cli", "pcb", "drc", "--format=json",
-         "--output=/tmp/drc.json", "/tmp/in/board.kicad_pcb", "&&",
-         "cat", "/tmp/drc.json"],
-        inputs, timeout_s=90,
-    )
+    # DRC requires .kicad_pcb which this dataset doesn't include; skip cleanly.
+    drc = {"exit_code": None, "stdout": "", "stderr": "DRC skipped (no PCB)", "duration_s": 0}
     
     # Parse JSON from stdout (the `&& cat` trick prints JSON)
     erc_json = None
@@ -266,7 +265,8 @@ def run_erc_drc_for_project(project: dict) -> dict:
     return {
         "erc": {**erc, "json": erc_json},
         "drc": {**drc, "json": drc_json},
-        "valid": erc["exit_code"] == 0 and drc["exit_code"] == 0,
+        # `valid` = baseline ERC passes (DRC skipped because no PCB).
+        "valid": erc["exit_code"] == 0,
     }
 
 
@@ -333,15 +333,18 @@ def build_triplets_from_project(project: dict, manifest_rows: list) -> list[Trip
     """
     triplets = []
     rng = random.Random(SEED + hash(project["project"]))
-    sch_text = Path(project["sch_path"]).read_text()
-    pcb_text = Path(project["pcb_path"]).read_text() if project.get("pcb_path") else None
+    sch_text = project.get("sch_content") or (
+        Path(project["sch_path"]).read_text() if project.get("sch_path") else None
+    )
+    if sch_text is None:
+        return []
+    pcb_text = None  # dataset has no PCB pair, see load_source_corpus()
 
     for i in range(NOISE_VARIANTS_PER_BOARD):
         noise_op = NOISE_OPERATIONS[i % len(NOISE_OPERATIONS)]
-        bad_sch, bad_pcb = inject_noise(sch_text, pcb_text, noise_op, rng)
-        # Re-run ERC/DRC on the noisy version
-        bad_reports = run_erc_drc_for_project({**project,
-                                               "sch_path": bad_sch, "pcb_path": bad_pcb})
+        bad_sch, _ = inject_noise(sch_text, pcb_text, noise_op, rng)
+        # Re-run ERC on the noisy version (DRC skipped, no PCB available)
+        bad_reports = run_erc_drc_for_project({**project, "sch_content": bad_sch})
         # Skip if noise didn't actually break anything (kicad-cli still 0 errors)
         if bad_reports["valid"]:
             continue
@@ -540,9 +543,21 @@ def compliance_audit(jsonl_path: Path) -> dict:
     
     stats = {"rows_in": 0, "rows_out": 0, "hard_pii_filtered": 0}
     
+    # Search several plausible paths to find tools/pii_scan.py — works
+    # whether builder runs from the repo, grosmac /tmp clone, or
+    # electron-server /tmp clone.
+    for p in [
+        Path(__file__).parent.parent / "tools",   # repo-relative (builders/ → ../tools/)
+        Path("/home/electron/ailiance-models-tuning/tools"),
+        Path("/tmp/ailiance-models-tuning/tools"),
+        Path("/tmp/amt_pr/tools"),
+        Path.home() / "ailiance-models-tuning" / "tools",
+    ]:
+        if (p / "pii_scan.py").exists():
+            sys.path.insert(0, str(p))
+            break
+
     try:
-        # Try to import pii_scan module
-        sys.path.insert(0, "/tmp/ailiance-models-tuning/tools")
         import pii_scan
         
         # Read input JSONL
