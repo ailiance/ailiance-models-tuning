@@ -1,6 +1,6 @@
 """Tests for training configuration."""
 
-from src.kiki_tuning.config import TrainingConfig
+from src.ailiance_tuning.config import TrainingConfig
 
 
 def test_default_config():

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build all domain datasets and validate them.
-# Run from the KIKI-models-tuning project root.
+# Run from the ailiance-models-tuning project root.
 #
 # Usage:
 #   ./scripts/build_all_datasets.sh               # Seeds only (default)

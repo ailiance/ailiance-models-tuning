@@ -1,4 +1,4 @@
-# src/kiki_tuning/ — library core
+# src/ailiance_tuning/ — library core
 
 Intentionally thin. Two modules, two dataclasses, no side effects. All the training/eval/publish logic lives in `scripts/`.
 
@@ -15,7 +15,7 @@ Intentionally thin. Two modules, two dataclasses, no side effects. All the train
 - **Dataclasses, not pydantic**. We don't need runtime validation and pydantic pulls a big tree. If you add a schema, use `dataclasses.dataclass` + type hints.
 - **Registry is append-only semantics** — `register()` overwrites by name on purpose (re-training replaces the entry). If you want history, add a versioned field (`version: int = 1`), don't mutate the contract silently.
 - **`from __future__ import annotations`** at the top. Python 3.12+, but keep string-form annotations for dataclass fields.
-- **Logger name** : `kiki_tuning.<module>`. Parent configures handlers — don't `basicConfig()` here.
+- **Logger name** : `ailiance_tuning.<module>`. Parent configures handlers — don't `basicConfig()` here.
 
 ## Anti-patterns
 

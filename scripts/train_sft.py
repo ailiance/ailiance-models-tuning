@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("kiki_tuning.train_sft")
+logger = logging.getLogger("ailiance_tuning.train_sft")
 
 
 def main():

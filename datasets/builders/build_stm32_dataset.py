@@ -5,7 +5,7 @@ Sources:
   - MuratKomurcu/stm32-hal-dataset (HuggingFace)
   - Hand-crafted seed examples covering HAL, LL, ISR, DMA, RTOS, ASM
 
-Output: OpenAI chat-format JSONL (messages/role/content) for KIKI training pipeline.
+Output: OpenAI chat-format JSONL (messages/role/content) for Ailiance training pipeline.
 
 Usage:
   python build_stm32_dataset.py                    # Seeds only (~30 examples)

@@ -4,7 +4,7 @@ One YAML per SFT run. Keeps reproducibility explicit: given a config + a commit 
 
 ## Shape
 
-Mirrors `TrainingConfig` in `src/kiki_tuning/config.py`. Example (`sft_stm32.yaml`):
+Mirrors `TrainingConfig` in `src/ailiance_tuning/config.py`. Example (`sft_stm32.yaml`):
 
 ```yaml
 base_model: Qwen/Qwen3-8B            # or Qwen/Qwen2.5-32B-Instruct

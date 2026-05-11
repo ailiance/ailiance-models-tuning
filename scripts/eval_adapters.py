@@ -17,7 +17,7 @@ import random
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("kiki_eval")
+logger = logging.getLogger("ailiance_eval")
 
 DOMAINS = [
     "stm32", "kicad", "embedded", "platformio", "iot",

@@ -1,6 +1,6 @@
-# scripts/ — KIKI training entry points
+# scripts/ — Ailiance training entry points
 
-Real entry points for the pipeline. `src/kiki_tuning/` only holds config + registry dataclasses — everything with side effects lives here.
+Real entry points for the pipeline. `src/ailiance_tuning/` only holds config + registry dataclasses — everything with side effects lives here.
 
 ## What's what
 
@@ -18,8 +18,8 @@ Real entry points for the pipeline. `src/kiki_tuning/` only holds config + regis
 
 - **Entry scripts are `python scripts/foo.py` from repo root**, not `python -m ...`. CWD = repo root, not `scripts/`.
 - **Lazy heavy imports** inside `main()` (torch/transformers/peft/trl). Keeps `--help` fast and lets validator scripts run without GPU deps.
-- **Argparse everywhere** — no YAML parsing in scripts; YAML is pre-processed by the caller (shell wrapper) or the dataclass in `src/kiki_tuning/config.py`.
-- **Logging** : `logging.basicConfig(level=INFO)` + named logger (`kiki_tuning.train_sft`, `kiki_eval`, `kiki_publish`). No `print()` except final summary.
+- **Argparse everywhere** — no YAML parsing in scripts; YAML is pre-processed by the caller (shell wrapper) or the dataclass in `src/ailiance_tuning/config.py`.
+- **Logging** : `logging.basicConfig(level=INFO)` + named logger (`ailiance_tuning.train_sft`, `ailiance_eval`, `ailiance_publish`). No `print()` except final summary.
 - **Path convention** : adapters in `outputs/sft-<domain>/` or `outputs/sft-<domain>-<basemodel-tag>/`. Eval + publish scan these paths — if you rename, update both.
 - **Graceful skip** : missing dataset / missing adapter → `logger.warning` + return status, never raise. Shell loops rely on `set -euo pipefail` but expect non-fatal skips.
 
@@ -28,5 +28,5 @@ Real entry points for the pipeline. `src/kiki_tuning/` only holds config + regis
 - Do NOT add a new training script — extend `train_sft.py` with flags instead. Keeping one path prevents config drift across 10 domains.
 - Do NOT hardcode `outputs/sft-<domain>` in new code — accept it as argument. The 32B training runs write to `-qwen25-32b` suffix; keep the scanner flexible.
 - Do NOT import `torch` at module scope — breaks `validate_dataset.py` on pure-CPU hosts.
-- Do NOT parse YAML in the script — if a config needs parsing, build a loader in `src/kiki_tuning/config.py` and return a `TrainingConfig`.
+- Do NOT parse YAML in the script — if a config needs parsing, build a loader in `src/ailiance_tuning/config.py` and return a `TrainingConfig`.
 - Do NOT put secrets (HF token, wandb key) in the script — rely on env vars or `huggingface-cli login` beforehand.

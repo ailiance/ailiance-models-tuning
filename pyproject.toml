@@ -1,7 +1,7 @@
 [project]
-name = "kiki-models-tuning"
+name = "ailiance-models-tuning"
 version = "0.1.0"
-description = "CPT/SFT/RLVR model fine-tuning pipeline for the FineFab ecosystem"
+description = "CPT/SFT/RLVR model fine-tuning pipeline for the Ailiance ecosystem"
 requires-python = ">=3.12"
 dependencies = [
     "torch>=2.3",
@@ -29,7 +29,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["kiki_tuning*"]
+include = ["ailiance_tuning*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

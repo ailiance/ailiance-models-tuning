@@ -16,7 +16,7 @@ from pathlib import Path
 from huggingface_hub import HfApi, create_repo
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("kiki_publish")
+logger = logging.getLogger("ailiance_publish")
 
 DOMAINS = [
     "stm32", "kicad", "embedded", "platformio", "iot",
@@ -77,12 +77,12 @@ datasets:
 pipeline_tag: text-generation
 ---
 
-# KIKI {domain.upper()} SFT — LoRA Adapter
+# Ailiance {domain.upper()} SFT — LoRA Adapter
 
 Fine-tuned LoRA adapter for **{domain}** domain expertise, based on `{BASE_MODEL}`.
 
-Part of the [KIKI Models Tuning](https://github.com/L-electron-Rare/KIKI-models-tuning) pipeline
-for the [FineFab](https://github.com/L-electron-Rare) platform.
+Part of the [Ailiance Models Tuning](https://github.com/ailiance/ailiance-models-tuning) pipeline
+for the [Ailiance](https://github.com/ailiance) platform.
 
 ## Training Details
 

@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from src.kiki_tuning.registry import ModelEntry, ModelRegistry
+from src.ailiance_tuning.registry import ModelEntry, ModelRegistry
 
 
 def test_register_and_get():

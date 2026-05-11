@@ -1,6 +1,6 @@
 # DOMAINS — catalog of fine-tuned expert domains
 
-KIKI-models-tuning trains 10 domain-expert LoRA adapters on top of a shared base (`Qwen/Qwen2.5-32B-Instruct`). Each domain has its own builder, system prompt, and recipe.
+ailiance-models-tuning trains 10 domain-expert LoRA adapters on top of a shared base (`Qwen/Qwen2.5-32B-Instruct`). Each domain has its own builder, system prompt, and recipe.
 
 ## Overview
 
@@ -73,7 +73,7 @@ Over-tuning shows up as hallucination on held-out domain probes, not just traini
 7. Eval: `python scripts/eval_adapters.py --samples 5`.
 8. Publish: `python scripts/publish_adapters.py --org clemsail`.
 
-After publish, `src/kiki_tuning/registry.py` records the new entry in `artifacts/model_registry.json`.
+After publish, `src/ailiance_tuning/registry.py` records the new entry in `artifacts/model_registry.json`.
 
 ## Consumer: downstream repos
 
