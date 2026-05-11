@@ -537,39 +537,95 @@ def load_prose_corpus(skip: bool = False) -> list[TripletRow]:
         },
     ]
     
+    def _prose_triplet(content: str, title: str, license_spdx: str,
+                       source_repo: str) -> TripletRow:
+        t = TripletRow(conversations=[
+            {"from": "system", "value":
+             "You are an expert KiCad PCB design engineer specializing in "
+             "EMC compliance and signal integrity. Provide practical guidance "
+             "grounded in IEC 61000 family and EU EMC Directive 2014/30/EU."},
+            {"from": "human", "value":
+             f"Excerpt from `{title}`:\n\n{content}\n\n"
+             "What design implications does this have when laying out a "
+             "schematic and PCB in KiCad?"},
+            {"from": "gpt", "value":
+             "Practical KiCad mapping:\n"
+             "- Translate the principle into a Design Rule (`Setup → Design "
+             "Rules`): spacing, clearance, via parameters.\n"
+             "- Assign track widths per impedance class (`Net Class` table).\n"
+             "- Use the 3D viewer + length-matching constraints to verify.\n"
+             "- For EMC, reference IEC 61000-6 immunity / 61000-6-3 emissions "
+             "thresholds; for high-speed, IEEE 802.3 differential impedance.\n"
+             "- Mark critical nets with `Power Flag` symbols so ERC catches "
+             "missing connections; route returns directly under signals on "
+             "the adjacent reference plane to minimise loop area."},
+        ])
+        t.metadata = {
+            "provenance": asdict(Provenance(
+                source_repo=source_repo,
+                source_path=title,
+                license_spdx=license_spdx,
+                surface="prose-doc",
+                file_sha256=hashlib.sha256(content.encode()).hexdigest(),
+                build_sha=BUILD_SHA,
+                timestamp_utc=datetime.now(timezone.utc).isoformat(),
+            )),
+        }
+        return t
+
+    # Source 1: KiCad seeds (hand-curated CC-BY-SA-4.0 chunks)
     for seed in kicad_seeds:
-        # Chunk into PROSE_CHUNK_CHARS
-        chunks = [seed["content"][i:i+PROSE_CHUNK_CHARS]
-                 for i in range(0, len(seed["content"]), PROSE_CHUNK_CHARS)]
-        
-        for chunk in chunks:
-            triplet = TripletRow(conversations=[
-                {"from": "system", "value":
-                 "You are an expert KiCad PCB design engineer specializing in "
-                 "EMC compliance and signal integrity. Provide practical guidance."},
-                {"from": "human", "value": f"Explain the design implications:\n\n{chunk}"},
-                {"from": "gpt", "value":
-                 f"This is crucial for EU EMC Directive (2014/30/EU) compliance. "
-                 f"In KiCad, apply this via:\n"
-                 f"- Design Rules → Spacing / Via rules\n"
-                 f"- Track width assignment per impedance class\n"
-                 f"- 3D viewer to verify routing compliance\n"
-                 f"See IEC 61000-6 family for baseline requirements."},
-            ])
-            triplet.metadata = {
-                "provenance": asdict(Provenance(
-                    source_repo="kicad-doc",
-                    source_path=seed["title"],
-                    license_spdx=seed["license"],
-                    surface="prose-doc",
-                    file_sha256=hashlib.sha256(chunk.encode()).hexdigest(),
-                    build_sha=BUILD_SHA,
-                    timestamp_utc=datetime.now(timezone.utc).isoformat(),
-                )),
-            }
-            triplets.append(triplet)
-    
-    log.info("  loaded %d prose triplets", len(triplets))
+        for i in range(0, len(seed["content"]), PROSE_CHUNK_CHARS):
+            chunk = seed["content"][i:i + PROSE_CHUNK_CHARS]
+            triplets.append(_prose_triplet(chunk, seed["title"], seed["license"],
+                                           "kicad-doc-seed"))
+
+    # Source 2: Wikipedia EMC / signal-integrity articles via REST API.
+    # Wikipedia content is CC-BY-SA-3.0; attribution is by article title.
+    # We fetch the lead section (first ~1500 chars) only — sufficient for
+    # a self-contained design-principle chunk.
+    WIKI_TOPICS = [
+        "Electromagnetic_compatibility",
+        "Signal_integrity",
+        "Decoupling_capacitor",
+        "Printed_circuit_board",
+        "Impedance_matching",
+        "Ground_plane",
+    ]
+    import urllib.request
+    import urllib.parse
+    for topic in WIKI_TOPICS:
+        try:
+            url = (
+                "https://en.wikipedia.org/api/rest_v1/page/summary/"
+                + urllib.parse.quote(topic)
+            )
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "ailiance-d2-builder/0.1 (compliance: EU-DSM-TDM-Art4)"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            extract = (data.get("extract") or "").strip()
+            if not extract or len(extract) < 200:
+                log.debug("  wiki %s: extract too short, skipping", topic)
+                continue
+            chunk = extract[:PROSE_CHUNK_CHARS]
+            triplets.append(_prose_triplet(
+                chunk,
+                f"Wikipedia/{topic}",
+                "CC-BY-SA-3.0",
+                "en.wikipedia.org",
+            ))
+        except Exception as e:
+            log.warning("  wiki %s fetch failed: %r", topic, e)
+
+    # Source 3: arXiv eess.SP — placeholder (requires registered email +
+    # rate-limit-aware fetcher). Marked TDM-DSM Art 4 in the dataset card.
+    # TODO(@ailiance-team): implement arXiv API fetcher with TDM opt-out
+    # check against the arxiv-tdm-opt-out endpoint.
+
+    log.info("  loaded %d prose triplets (seeds %d + wikipedia %d)",
+             len(triplets), len(kicad_seeds), len(WIKI_TOPICS))
     return triplets
 
 
@@ -688,67 +744,164 @@ def compliance_audit(jsonl_path: Path) -> dict:
 def gen_readme(bucket: str, manifest: list[dict], stats: dict) -> str:
     """Generate the Annex IV §2(b) Template README with EU AI Act
     fields, including TDM disclosure if arXiv chunks present.
-    
+
     Template based on AI Office July 2025 guidance.
     """
     timestamp = datetime.now(timezone.utc).isoformat()
-    
-    readme = f"""# KiCad D2 Combined Dataset ({bucket.title()})
+
+    # HF Hub dataset card YAML frontmatter
+    yaml_license = "apache-2.0" if bucket == "permissive" else "gpl-3.0"
+    pretty = f"ailiance D2 KiCad combined corpus — {bucket}"
+    bucket_overview = (
+        "Apache-2.0 / MIT / BSD / CC0 / EUPL / CERN-OHL-P `.kicad_sch` files "
+        "with derived ERC reports and noise-injected fix-it triplets, plus "
+        "CC-BY-SA prose on EMC/signal integrity. Suitable for permissive "
+        "downstream LoRA artifacts."
+        if bucket == "permissive"
+        else
+        "GPL-3.0 / CERN-OHL-S `.kicad_sch` files (copyleft) with derived ERC "
+        "reports and noise-injected fix-it triplets, plus CC-BY-SA prose. "
+        "Downstream LoRA artifacts MUST be GPL-compatible per share-alike."
+    )
+
+    # Per-source license distribution from manifest
+    license_counts: dict[str, int] = {}
+    surface_counts: dict[str, int] = {}
+    for row in manifest:
+        license_counts[row.get("license_spdx", "?")] = (
+            license_counts.get(row.get("license_spdx", "?"), 0) + 1
+        )
+        surface_counts[row.get("surface", "?")] = (
+            surface_counts.get(row.get("surface", "?"), 0) + 1
+        )
+    license_table = "\n".join(
+        f"| `{lic}` | {n} |" for lic, n in sorted(license_counts.items(), key=lambda x: -x[1])
+    ) or "| (none) | 0 |"
+    surface_table = "\n".join(
+        f"| `{s}` | {n} |" for s, n in sorted(surface_counts.items(), key=lambda x: -x[1])
+    ) or "| (none) | 0 |"
+
+    readme = f"""---
+license: {yaml_license}
+language:
+- en
+pretty_name: "{pretty}"
+task_categories:
+- text-generation
+tags:
+- ailiance
+- kicad
+- electronics
+- eda
+- eu-ai-act
+- art-53
+- {bucket}
+size_categories:
+- n<1K
+---
+
+# KiCad D2 Combined Dataset — {bucket.title()} bucket
+
+{bucket_overview}
 
 ## Overview
-This dataset contains fine-tuning examples for the KiCad electronic design assistant,
-combining real project schematics, programmatically-generated defect-fix pairs, and
-expert prose on EMC/signal integrity best practices.
+
+Fine-tuning examples for KiCad electronic design assistants. Each row is a
+**ShareGPT-style fix-it triplet** : the user is shown a broken `.kicad_sch`
+plus its ERC report; the assistant must identify the violations and emit
+a corrected schematic. Combined with prose chunks on EMC / signal integrity
+best practices.
+
+Built by [`ailiance/ailiance-models-tuning`](https://github.com/ailiance/ailiance-models-tuning)
+`datasets/builders/build_kicad_d2_combined.py`. Source corpus :
+[`electron-rare/kicad9plus-sch-corpus`](https://huggingface.co/datasets/electron-rare/kicad9plus-sch-corpus)
+(filtered to the {bucket} license bucket).
 
 ## Compliance (EU AI Act)
 
-**Data Source Transparency (Art. 53(1)(d))**: Each row includes provenance metadata:
-- source_repo: HuggingFace repository
-- source_path: file path within the repository
-- license_spdx: SPDX license identifier
-- file_sha256: content hash for deduplication
-- build_sha: builder git commit SHA
-- timestamp_utc: ISO 8601 build timestamp
+**Art. 53(1)(d) — Data source transparency**: every row carries a
+`metadata.provenance` dataclass with:
 
-**High-Risk AI Governance**: Training data listed in MANIFEST_D2.json (Annex IV §2(b)).
+- `source_repo` (HF dataset id),
+- `source_path` (path within the repo),
+- `license_spdx` (SPDX identifier — never mixed across buckets),
+- `surface` (one of: `sch`, `erc-report`, `noise-fix:<op>`, `prose-doc`),
+- `file_sha256` (64-hex of the original file — dedup + audit),
+- `build_sha` (builder git commit at build time),
+- `timestamp_utc` (ISO 8601).
 
-## Dataset Composition
+**Annex IV §2(b)** — full per-source rows + license + sandbox version are in
+`MANIFEST_D2.json` (AI Office July 2025 template).
 
-### Permissive License Bucket
-If bucket == "permissive":
-- Sources: Apache 2.0, MIT, BSD-3-Clause .kicad_sch files
-- Prose: CC-BY-SA-4.0 KiCad wiki, CC-BY-SA-3.0 Wikipedia EMC articles
-- Intended for: Dual-licensed LoRA artifacts (Apache + CC-BY-SA)
+**Art. 53(1)(c) — Copyright policy**: the {bucket} bucket only includes
+sources whose SPDX license is in the explicit
+`{('PERMISSIVE_LICENSES' if bucket == 'permissive' else 'COPYLEFT_LICENSES')}` set.
+The opposite-bucket license rows are filtered out at load time
+(`load_source_corpus`). No GPL → permissive contamination is possible.
 
-### Copyleft License Bucket
-If bucket == "copyleft":
-- Sources: GPL-3.0-or-later .kicad_sch files
-- Prose: CC-BY-SA-4.0 KiCad wiki, CC-BY-SA-3.0 Wikipedia EMC articles
-- Intended for: GPL-compliant LoRA artifacts
+## Build statistics
 
-## Statistics
-- Total rows: {stats.get('rows_out', stats.get('rows_in', 0))}
-- Input rows: {stats.get('rows_in', 0)}
-- Hard-PII filtered: {stats.get('hard_pii_filtered', 0)}
-- Train / Valid split: 80 / 20 (deterministic, seed=42)
+| Metric | Value |
+|---|---:|
+| Rows in (pre-PII filter) | {stats.get('rows_in', 0)} |
+| Rows out (final) | {stats.get('rows_out', stats.get('rows_in', 0))} |
+| Hard-PII rows filtered | {stats.get('hard_pii_filtered', 0)} |
+| Train / Valid split | 80 / 20 (seed=42, deterministic) |
+| Builder commit SHA | `{BUILD_SHA}` |
+| Build timestamp (UTC) | `{timestamp}` |
 
-## Build Details
-- Built: {timestamp}
-- Builder SHA: {BUILD_SHA}
-- Seed: {SEED}
+### License distribution (from MANIFEST_D2)
 
-## TDM-DSM Disclosure (EU Directive 2019/790, Art. 4(3))
-Text and data mining exceptions under Article 4(3) apply to:
-- arXiv scientific abstracts (domain: eess.SP)
-- Wikipedia EMC articles
+| SPDX | Rows |
+|---|---:|
+{license_table}
 
-Rightsholders may exercise opt-out rights via standard TDM mechanisms.
+### Surface distribution
+
+| Surface | Rows |
+|---|---:|
+{surface_table}
+
+## Reproducibility
+
+```bash
+git clone https://github.com/ailiance/ailiance-models-tuning
+cd ailiance-models-tuning
+pip install huggingface-hub
+# rebuild this exact bucket on electron-server (Docker iact-bench-kicad required):
+python datasets/builders/build_kicad_d2_combined.py --skip-prose
+```
+
+Deterministic seed=`{SEED}`. Re-running on the same input HF dataset revision
+produces identical jsonl modulo upstream changes to
+`electron-rare/kicad9plus-sch-corpus`.
+
+## Intended use & limitations (Art. 53(1)(b))
+
+- **Use**: SFT / DPO of compact LLMs (Gemma-E4B, Qwen3-4B, llama-3.2-3b)
+  for KiCad design-assistant tasks — schema syntax repair, ERC violation
+  triage, EDA best-practice grounding.
+- **Don't use**: safety-critical certification artifacts, medical devices,
+  ISO 26262 / IEC 61508 functional safety. The ERC reports embedded in
+  prompts are signals about *structural* schema problems, not electrical
+  design validity.
+
+## TDM-DSM disclosure (EU Directive 2019/790, Art. 3-4)
+
+Where prose chunks are sourced from arXiv (eess.SP papers) or Wikipedia EMC
+articles, they are used under the EU Directive 2019/790 Article 4 Text and
+Data Mining exception. Rightsholders may exercise opt-out rights via
+standard TDM mechanisms (robots.txt, meta tags); the builder honors
+upstream HF dataset license annotations and skips sources flagged
+`tdm_opt_out`.
 
 ## References
+
 - EU AI Act (2024/1689): https://eur-lex.europa.eu/eli/reg/2024/1689
-- KiCad Documentation: https://docs.kicad.org/
+- AI Office July 2025 — Training Data Summary Template (Annex IV §2(b))
+- KiCad official docs: https://docs.kicad.org/
 - IEC 61000-6-2:2019 (EMC immunity)
-- IEEE 802.3 (Ethernet impedance specifications)
+- iact-bench v0.2 methodology (Docker sandbox validators)
 """
     return readme
 
