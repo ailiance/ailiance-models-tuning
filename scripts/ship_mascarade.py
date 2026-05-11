@@ -75,7 +75,11 @@ BASES: dict[str, BaseSpec] = {
     ),
     "qwen3-4b": BaseSpec(
         name="qwen3-4b",
-        hf_base="Qwen/Qwen2.5-Coder-3B-Instruct",  # placeholder — adjust to true Qwen3-4B once HF id confirmed
+        # Canonical Qwen3-4B instruct safetensors (10.7M dl). The Tower
+        # Ollama prod actually serves a Q4_K_M GGUF derived from this base,
+        # so the LoRA we train here remains compatible after llama.cpp
+        # convert+quant to GGUF.
+        hf_base="Qwen/Qwen3-4B-Instruct-2507",
         host="kxkm-23",  # via ssh -J electron-server kxkm@10.2.0.237
         train_cmd=(
             "cd ~/ailiance-models-tuning && "
