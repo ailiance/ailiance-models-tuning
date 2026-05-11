@@ -6,6 +6,17 @@ Part of the [**Ailiance**](https://github.com/ailiance) platform. Upstream sibli
 
 ---
 
+## Where to find related artifacts
+
+- **Live demo & cockpit**: https://www.ailiance.fr
+- **Status dashboard**: https://home.saillant.cc
+- **HuggingFace IP source-of-truth**: https://huggingface.co/electron-rare
+- **HuggingFace product distribution**: https://huggingface.co/Ailiance-fr
+- **Audit-grade bench validators**: https://github.com/electron-rare/iact-bench
+- **Benchmark results**: https://github.com/electron-rare/electron-bench
+
+Ailiance is the EU-sovereign LLM serving stack of [L'Electron Rare](https://www.electron-rare.fr), a French SME. Multi-model, audit-grade, EU AI Act Art. 13/15/52/53 transparency.
+
 ## What it does
 
 - Builds chat-format datasets (ShareGPT + Hugging Face merges) for 10 hardware domains.
