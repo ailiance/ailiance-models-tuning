@@ -348,14 +348,14 @@ def inject_noise(sch_text: str, pcb_text: str | None,
     
     elif noise_op == "displace_symbol":
         # Find first symbol with (at x y angle) and increment x by 500mil
+        # Regex has 3 groups: prefix, x, tail (y + angle + closing paren)
         def displace_at(m):
             pre = m.group(1)
             x = int(m.group(2))
-            y = m.group(3)
-            angle = m.group(4)
-            return f"{pre}(at {x + 500} {y} {angle})"
+            tail = m.group(3)  # contains " y angle"
+            return f"{pre}{x + 500}{tail}"
         bad_sch = re.sub(
-            r'(\(symbol[^)]*?\(at\s+)(-?\d+)(\s+-?\d+\s+[\d.]+)\)',
+            r'(\(symbol[^)]*?\(at\s+)(-?\d+)(\s+-?\d+\s+[\d.]+\))',
             displace_at, bad_sch, count=1
         )
     
